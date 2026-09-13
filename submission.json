@@ -1,0 +1,171 @@
+{
+  "api_key": "IVY26-50D79A344D4E",
+  "candidate": {
+    "name": "Vrinda Dhingra",
+    "email": "",
+    "repo_url": "",
+    "demo_url": ""
+  },
+  "answers": {
+    "total_listing_records": 3500,
+    "unique_properties": 3397,
+    "active_listings": 2792,
+    "corrupt_listing_ids": [
+      "SQU-6002204", "MAG-6000631", "100-6001968", "DWE-6002663", "MAG-6000527",
+      "SQU-6001628", "100-6001461", "MAG-6000248", "100-6000338", "ZER-6001341",
+      "MAG-6000212", "ZER-6000468", "MAG-6001135", "SQU-6000001", "100-6000323",
+      "ZER-6000669", "DWE-6001015", "DWE-6000010", "SQU-6001477", "MAG-6002834",
+      "MAG-6000453", "DWE-6002846", "SQU-6001836", "SQU-6002130", "SQU-6003044",
+      "100-6002071", "100-6001475", "DWE-6000627", "SQU-6002405", "MAG-6000014",
+      "SQU-6000395", "100-6000578", "MAG-6002472", "MAG-6002941", "100-6000678",
+      "100-6001599"
+    ],
+    "total_monthly_rent": 4662400,
+    "avg_price_per_sqft_2bhk": 27027.41,
+    "costliest_project": { "project_id": "P60090", "price_max_inr": 989000000 },
+    "listings_last_7_days": 129,
+    "fake_listing_ids": [
+      "ZER-6000608", "DWE-6002709", "100-6001818", "SQU-6000450", "ZER-6003450",
+      "DWE-6002551", "MAG-6002105", "100-6000114", "SQU-6001955", "ZER-6002554",
+      "ZER-6001317", "SQU-6001596", "DWE-6002629", "DWE-6001111"
+    ],
+    "projects_with_wrong_listing_count": 106
+  },
+  "findings": [
+    {
+      "endpoint": "*",
+      "category": "auth",
+      "documented": "API key sent as ?api_key=... query parameter",
+      "actual": "API key must be sent in the X-API-Key request header; query param gets a 401",
+      "how_found": "fetch script got a 401 with an explicit error message naming the header",
+      "impact": "every request built exactly as documented fails",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "auth",
+      "documented": "only the API key is required to read collection endpoints",
+      "actual": "also requires a valid bearer token from POST /auth/login, or returns 401",
+      "how_found": "401 'missing bearer token' when only the API key header was sent",
+      "impact": "a frontend built strictly from the docs never loads listings",
+      "evidence": []
+    },
+    {
+      "endpoint": "/auth/login",
+      "category": "auth",
+      "documented": "response field is `token`",
+      "actual": "response field is `access_token`",
+      "how_found": "printed the raw login response; `data.token` was undefined",
+      "impact": "code following the docs literally never authenticates",
+      "evidence": []
+    },
+    {
+      "endpoint": "/auth/login",
+      "category": "auth",
+      "documented": "'There is no refresh flow.'",
+      "actual": "response includes a refresh_token and a refresh_url (/auth/refresh)",
+      "how_found": "printed the raw login response",
+      "impact": "combined with the real 15-minute token lifetime, a refresh flow is actually necessary for any session over 15 minutes",
+      "evidence": []
+    },
+    {
+      "endpoint": "/auth/login",
+      "category": "auth",
+      "documented": "token valid for 24 hours (expires_in: 86400), single login enough for a session",
+      "actual": "expires_in returned as 900 (15 minutes)",
+      "how_found": "printed the raw login response",
+      "impact": "a frontend holding one token for 30+ minutes (as required) will start getting 401s unless it refreshes",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "pagination",
+      "documented": "pagination is via `page` (1-indexed)",
+      "actual": "`page` is silently ignored; every value returns the same first records. Real pagination is via `offset`",
+      "how_found": "compared first/last listing_id across page=1,2,3 (identical) vs offset=0,50,100 (different)",
+      "impact": "a client built strictly from the docs can never see past the first page",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "pagination",
+      "documented": "limit accepts up to 200",
+      "actual": "capped at 50 regardless of requested limit",
+      "how_found": "requested limit=200, server always returned 50",
+      "impact": "more requests needed than the docs imply",
+      "evidence": []
+    },
+    {
+      "endpoint": "*",
+      "category": "completeness",
+      "documented": "collection responses include `page` and `page_size` fields",
+      "actual": "both fields are absent (undefined) on every collection response; only `total` and `results` are present",
+      "how_found": "printed data.page and data.page_size directly",
+      "impact": "none functionally once known, but response shape doesn't match the doc",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "pagination",
+      "documented": "`total` is the exact number of records matching your filters",
+      "actual": "paging past `total` still returns genuine unique records; the real retrievable count (3500) exceeds the claimed total (3338) by 162, with zero duplicate IDs",
+      "how_found": "paged to where results.length reached total, then kept paging and got new unique IDs until the server finally returned an empty page",
+      "impact": "any client that trusts `total` as the stopping condition silently misses real records at the tail",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "completeness",
+      "documented": "returns only active listings; inactive/expired/withdrawn are excluded server side, so anything returned is safe to show",
+      "actual": "708 of 3500 retrievable records have is_live=false",
+      "how_found": "counted is_live values across the full pulled dataset",
+      "impact": "a frontend trusting the doc would display inactive/withdrawn listings to users as if live",
+      "evidence": ["SQU-6001937","DWE-6002796","MAG-6000794","SQU-6003155","SQU-6000987","SQU-6000737","DWE-6002177","DWE-6002689","100-6001196","MAG-6001288","100-6001939","100-6003034","ZER-6000180","ZER-6000474","SQU-6002061","100-6002415","SQU-6001398","ZER-6001587","100-6000309","100-6002885"]
+    },
+    {
+      "endpoint": "/v1/projects",
+      "category": "units",
+      "documented": "price_min and price_max are in rupees, integer",
+      "actual": "values are non-integer, crore-scale figures (e.g. 98.9, 5.83) requiring x10,000,000 to reach real rupees, roughly consistent with actual listing prices under the same projects",
+      "how_found": "top price_max values were all small decimals; cross-checked against real listing prices tied to the same project_ids after scaling",
+      "impact": "using the raw field value as rupees understates every project's price by 7 orders of magnitude",
+      "evidence": ["P60090", "P60179", "P60273", "P60280", "P60185", "P60187"]
+    },
+    {
+      "endpoint": "/v1/projects",
+      "category": "data_quality",
+      "documented": "price_min and price_max describe a project's minimum and maximum unit price",
+      "actual": "for some projects, price_min is greater than price_max (values appear swapped/corrupted)",
+      "how_found": "compared price_min and price_max directly while sampling the largest projects by listing count",
+      "impact": "any code assuming min <= max will compute a negative or nonsensical range for these projects",
+      "evidence": ["P60124", "P60363"]
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "data_quality",
+      "documented": "listing objects describe real, physically coherent properties",
+      "actual": "a small number of records are physically impossible: negative/zero price, carpet_area exceeding super_built_up_area, floor exceeding total_floors, coordinates outside India, or a non-plot property with 0 bedrooms",
+      "how_found": "rule-based scan for logically impossible field combinations, cross-checked property_type to rule out legitimate 0-bedroom plots",
+      "impact": "these records cannot represent any real property and would mislead a buyer if shown as-is",
+      "evidence": ["SQU-6002204","MAG-6000631","100-6001968","DWE-6002663","MAG-6000527","SQU-6001628","100-6001461","MAG-6000248","100-6000338","ZER-6001341","MAG-6000212","ZER-6000468","MAG-6001135","SQU-6000001","100-6000323","ZER-6000669","DWE-6001015","DWE-6000010","SQU-6001477","MAG-6002834"]
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "fraud",
+      "documented": "listing objects represent real properties for sale",
+      "actual": "a subset of listings are priced at 30-40% of the median price/sqft for their locality+bedroom peer group with no other explanation (not corrupt data, not a locality/bedroom mismatch) — consistent with bait listings meant to generate enquiries rather than sell real inventory",
+      "how_found": "computed price/sqft per listing, grouped by locality+bedroom, flagged outliers below 40% of peer group median, after excluding already-corrupt (near-zero price) records",
+      "impact": "a user contacting these listings is likely enquiring about inventory that isn't genuinely available at the advertised price",
+      "evidence": ["ZER-6000608","DWE-6002709","100-6001818","SQU-6000450","ZER-6003450","DWE-6002551","MAG-6002105","100-6000114","SQU-6001955","ZER-6002554","ZER-6001317","SQU-6001596","DWE-6002629","DWE-6001111"]
+    },
+    {
+      "endpoint": "/v1/projects",
+      "category": "consistency",
+      "documented": "total_listings is recomputed whenever a listing is added or withdrawn, so it always agrees with GET /v1/listings?project_id=...",
+      "actual": "106 of 400 projects have a total_listings value that disagrees with the count of active (is_live=true) listings actually tied to that project_id",
+      "how_found": "counted active listings per project_id from the full pulled dataset and compared to each project's total_listings field",
+      "impact": "a dashboard trusting total_listings would show wrong inventory counts for over a quarter of projects",
+      "evidence": ["P60006","P60011","P60012","P60017","P60021","P60022","P60027","P60030","P60035","P60039","P60040","P60042","P60046","P60048","P60050"]
+    }
+  ]
+}

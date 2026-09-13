@@ -2,9 +2,9 @@
   "api_key": "IVY26-50D79A344D4E",
   "candidate": {
     "name": "Vrinda Dhingra",
-    "email": "",
-    "repo_url": "",
-    "demo_url": ""
+    "email": "vrinda.20234235@mnnit.ac.in",
+    "repo_url": "https://github.com/vrinda-1234/ivy-homes-assignment",
+    "demo_url": "https://ivy-homes-assignment-liard.vercel.app"
   },
   "answers": {
     "total_listing_records": 3500,
